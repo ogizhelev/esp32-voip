@@ -53,5 +53,13 @@ async def to_code(config):
     # esp_media_protocols — ESPHome writes idf_component.yml and the IDF manager fetches it.
     esp32.add_idf_component(name="espressif/esp_media_protocols", ref="==1.0.3")
 
+    # Our C++ uses the raw ESP-IDF drivers directly. ESPHome EXCLUDES these built-in IDF
+    # components by default (to cut compile time), so re-include them to get the headers:
+    #   esp_driver_i2c -> driver/i2c_master.h, esp_driver_i2s -> driver/i2s_std.h,
+    #   esp_driver_gpio -> driver/gpio.h
+    esp32.include_builtin_idf_component("esp_driver_i2c")
+    esp32.include_builtin_idf_component("esp_driver_i2s")
+    esp32.include_builtin_idf_component("esp_driver_gpio")
+
     # The engine spawns its own SIP/RTP tasks; give the main task some headroom.
     esp32.add_idf_sdkconfig_option("CONFIG_ESP_MAIN_TASK_STACK_SIZE", 8192)
