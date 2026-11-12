@@ -1,0 +1,14 @@
+# Python / ESPHome
+__pycache__/
+*.pyc
+.esphome/
+secrets.yaml
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+.ruff_cache/
+
+# Build
+build/

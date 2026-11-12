@@ -1,0 +1,64 @@
+# =============================================================================
+#  esp32-voip — ESP32-A1S (ES8388) SIP intercom via the custom `sip_voip` component.
+#  Wraps Espressif's esp_sip_service engine inside ESPHome for continuous full-duplex G.711.
+#  Requires the ESPHome beta/2026.11+ add-on (esp-idf framework). First flash over USB.
+# =============================================================================
+
+substitutions:
+  name: esp32-voip
+  friendly_name: "ESP32 VoIP"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev            # ESP32-A1S = classic ESP32-WROVER
+  framework:
+    type: esp-idf            # REQUIRED — esp_sip_service / ESP-ADF is esp-idf only
+
+# WROVER PSRAM — the SIP/RTC engine wants it.
+psram:
+  mode: quad
+  speed: 40MHz
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none      # modem-sleep drops SIP registration/RTP
+  ap:
+    ssid: ${friendly_name}
+    password: !secret wifi_password
+
+captive_portal:
+api:
+ota:
+  - platform: esphome
+    password: !secret ota_password
+logger:
+
+# ---- The custom SIP component (this repo) ----
+external_components:
+  - source: github://ogizhelev/esp32-voip@main
+    components: [sip_voip]
+    refresh: 0s              # always re-fetch @main while iterating
+
+sip_voip:
+  id: voip
+  server: 10.10.4.5          # HA VoIP Stack / PBX SIP server (LAN IP, UDP 5060)
+  username: !secret sip_username     # SIP account to register as (e.g. "esp32")
+  password: !secret sip_password     # its password
+  # auth_username: !secret sip_auth_username   # optional: login user if it differs from `username`
+  # codec: pcma              # pcma (G.711 a-law, default) | pcmu (u-law)
+  auto_answer: true          # door behaviour: pick up incoming calls automatically
+
+# ---- Diagnostics ----
+sensor:
+  - platform: uptime
+    name: "Uptime"
+  - platform: wifi_signal
+    name: "WiFi"
+    update_interval: 60s
+text_sensor:
+  - platform: version
+    name: "ESPHome Version"
