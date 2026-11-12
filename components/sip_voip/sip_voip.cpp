@@ -7,7 +7,6 @@ extern "C" {
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "driver/gpio.h"
-#include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_rtc.h"   // from espressif/esp_media_protocols (prebuilt engine)
 }
@@ -261,15 +260,12 @@ void SipVoip::setup() {
   ESP_LOGCONFIG(TAG, "Setting up sip_voip (%s@%s:%u)", this->username_.c_str(),
                 this->server_.c_str(), this->port_);
 
-  // CRITICAL: the esp_rtc "SIP"/"ESP_RTC_CORE" tasks log at INFO and, during
-  // registration, emit thousands of lines/sec. ESPHome forwards every esp-idf line
-  // to the UART from the MAIN LOOP task; at 115200 baud that starves loopTask and
-  // the task watchdog resets the device (~15 s -> boot loop -> safe mode).
-  // Clamp those tags to WARN so the flood is never generated.
-  esp_log_level_set("SIP", ESP_LOG_WARN);
-  esp_log_level_set("ESP_RTC_CORE", ESP_LOG_WARN);
-  esp_log_level_set("ESP_RTC", ESP_LOG_WARN);
-  esp_log_level_set("RTP", ESP_LOG_WARN);
+  // NOTE: the esp_rtc "SIP"/"ESP_RTC_CORE" tasks log at INFO and, during registration,
+  // emit thousands of lines/sec. ESPHome forwards every IDF line to the UART from the
+  // main loop, which starves loopTask and trips the task watchdog (boot loop). That is
+  // suppressed at the source via CONFIG_LOG_DEFAULT_LEVEL=WARN (see example.yaml
+  // esp32: framework:) — esp_log_level_set() is a no-op in ESPHome builds because
+  // CONFIG_LOG_DYNAMIC_LEVEL_CONTROL is disabled.
 
   if (!es8388_init()) {
     ESP_LOGE(TAG, "ES8388 codec init failed");

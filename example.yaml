@@ -16,6 +16,18 @@ esp32:
   board: esp32dev            # ESP32-A1S = classic ESP32-WROVER
   framework:
     type: esp-idf            # REQUIRED — esp_rtc / ESP-ADF is esp-idf only
+    # The prebuilt esp_rtc engine floods IDF INFO logs (per-packet SIP dumps) during
+    # registration. ESPHome forwards them to the UART from the main loop task; at
+    # 115200 baud that starves loopTask and the task watchdog resets the device
+    # (~15 s -> boot loop -> safe mode). With CONFIG_LOG_DYNAMIC_LEVEL_CONTROL=n (an
+    # ESPHome build default) esp_log_level_set() is a no-op, so the ONLY working gate
+    # is the compile-time CONFIG_LOG_DEFAULT_LEVEL constant. Pin it to WARN: user
+    # sdkconfig_options override the managed component's Kconfig default, so the
+    # INFO flood is never generated (WARN/ERROR survive, incl. "sip or domain is NULL").
+    log_level: WARN
+    sdkconfig_options:
+      CONFIG_LOG_DEFAULT_LEVEL_WARN: "y"
+      CONFIG_LOG_MAXIMUM_LEVEL_WARN: "y"
 
 # WROVER PSRAM — the SIP/RTC engine wants it.
 psram:
@@ -36,13 +48,8 @@ ota:
   - platform: esphome
     password: !secret ota_password
 logger:
-  level: DEBUG
-  logs:
-    # The esp_rtc engine floods the UART with per-packet SIP traffic from its own
-    # task; forwarding it all from the main loop starves loopTask and trips the task
-    # watchdog (boot loop). The component also clamps these at runtime; this is the
-    # belt-and-suspenders guard. Raise to DEBUG only when debugging SIP itself.
-    esp-idf: WARN
+  level: DEBUG               # ESPHome's own verbosity (independent of the esp-idf
+                             # native level, which is pinned to WARN in esp32: framework:).
 
 # ---- The custom SIP component (this repo) ----
 external_components:
