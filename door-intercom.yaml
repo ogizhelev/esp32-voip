@@ -30,13 +30,19 @@ esphome:
     then:
       - output.turn_on: pa_enable                       # NS4150 speaker amp ON (GPIO21)
       - select.set: { id: es_dac_out, option: "BOTH" }  # DAC -> LOUT1/2+ROUT1/2 (LINE1-only = silent)
-      - select.set: { id: es_adc_in,  option: "LINE1" } # ADC <- onboard mics for bring-up;
-                                                        # switch to LINE2 when you wire the domofon handset mic.
+      - select.set: { id: es_adc_in,  option: "LINE2" } # ADC <- onboard microphone (LINE2).
+                                                        # Re-applied every boot: the ES8388 resets its routing on power-up.
 
 esp32:
   board: esp32dev             # ESP32-A1S = classic ESP32-WROVER
   framework:
     type: esp-idf
+    advanced:
+      sram1_as_iram: true          # +40KB IRAM (app:227) — headroom for the VoIP stack
+      flash_chip: generic          # generic flash driver, saves IRAM (app:188)
+      minimum_chip_revision: "3.1" # this chip IS rev3.1 — saves ~10KB IRAM (app:197).
+                                   # NOTE: firmware will refuse to boot on an ESP32 older
+                                   # than rev3.1, so only keep this while flashing THIS board.
 
 # WROVER has PSRAM; NOT required for this PCM build. It is only SAFE to enable
 # because we leave voip_stack's *_in_psram options at their default false — the
@@ -128,7 +134,7 @@ speaker:
 voip_stack:
   id: phone
   transport: udp
-  sip_port: 5060
+  sip_port: 5080
   rtp_port: 40000
   extension: "101"            # this door unit's user-part; dial "101" in HA to ring it
   use_ha_as_first_contact: true
@@ -146,6 +152,8 @@ voip_stack:
   static_contacts:
     - name: Home Assistant
     - name: "100"             # the softphone extension the door calls
+    - name: "Mimi"            # name-only -> HA resolves to Mimi's phone (ext 103)
+    - name: "Ogi"             # name-only -> HA resolves to Ogi's phone (ext 101)
 
   ringing_timeout: 45s
   calling_timeout: 30s
@@ -154,7 +162,11 @@ voip_stack:
 #      role entities via ha_integration; do NOT declare those yourself) ----
 switch:
   - platform: voip_stack
-    auto_answer: { name: "Auto Answer" }   # ON = answer HA's inbound call instantly
+    auto_answer:
+      name: "Auto Answer"
+      id: auto_answer_sw
+      restore_mode: RESTORE_DEFAULT_ON       # door station: ON by default on first boot,
+                                             # and any later change is remembered across restarts
     dnd: { name: "Do Not Disturb" }
 
 number:
@@ -166,6 +178,18 @@ button:
   - platform: voip_stack
     call: { name: "Call Toggle" }          # idle->call HA / ringing->answer / active->hangup
     decline: { name: "Decline" }
+
+  # One-touch call buttons, exposed to Home Assistant (press from a dashboard/automation).
+  - platform: template
+    name: "Call Mimi"
+    icon: mdi:phone
+    on_press:
+      - voip_stack.call: { id: phone, target: "Mimi" }
+  - platform: template
+    name: "Call Ogi"
+    icon: mdi:phone
+    on_press:
+      - voip_stack.call: { id: phone, target: "Ogi" }
 
 # ---- Optional: a physical door button that dials extension 100. Wire it, set the
 #      real GPIO, and uncomment. (The software "Call Toggle" button above only
