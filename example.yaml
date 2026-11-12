@@ -68,7 +68,10 @@ external_components:
 
 sip_voip:
   id: voip
-  server: 10.10.4.5          # HA VoIP Stack / PBX SIP server (LAN IP, UDP 5060)
+  server: 10.10.4.5          # HA VoIP Stack SIP server (LAN IP)
+  port: 5080                 # VoIP Stack's SIP port. Moved off 5060 because HA core's
+                             # built-in "Voice over IP" integration squats UDP 5060;
+                             # set VoIP Stack to the SAME port here.
   username: !secret sip_username     # SIP account to register as. NOTE: esp_rtc has no
                                      # separate auth-username field — this IS the digest
                                      # auth user, so it must match the PBX account's auth user.
