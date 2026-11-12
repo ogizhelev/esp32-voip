@@ -50,6 +50,15 @@ ota:
 logger:
   level: DEBUG               # ESPHome's own verbosity (independent of the esp-idf
                              # native level, which is pinned to WARN in esp32: framework:).
+  # CONFIG_LOG_DEFAULT_LEVEL=WARN silences all IN-TREE esp-idf INFO logs, but the
+  # prebuilt esp_rtc .a was compiled elsewhere and its SIP/ESP_RTC_CORE INFO logs
+  # bypass our log-level gate entirely (verified: in-tree tags are WARN-gated, only
+  # the prebuilt lib leaks INFO). Nothing in our build can gate that library. During
+  # SIP registration it emits thousands of lines/sec; forwarding them to the 115200
+  # UART from the main loop starved loopTask -> task watchdog -> boot loop. Disable
+  # the UART logger so the main loop never blocks on it. Logs remain available over
+  # the network: ESPHome dashboard "Logs", or `esphome logs example.yaml`.
+  baud_rate: 0
 
 # ---- The custom SIP component (this repo) ----
 external_components:
