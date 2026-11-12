@@ -101,7 +101,8 @@ i2s_audio:
     full_duplex: true
 
 # full_duplex rule: the one mic and the speaker MUST share the bus with identical
-# sample_rate + bits_per_sample. 8 kHz / 16-bit on both = 1:1 onto a G.711 far end.
+# sample_rate + bits_per_sample. 16 kHz / 16-bit on both — ESPHome's i2s_audio
+# speaker rejects 8 kHz (below its minimum); HA transcodes 16k L16 <-> 8k G.711.
 microphone:
   - platform: i2s_audio
     id: a1s_mic
@@ -109,7 +110,7 @@ microphone:
     i2s_din_pin: GPIO35       # ES8388 ADC -> ESP
     adc_type: external
     channel: left
-    sample_rate: 8000
+    sample_rate: 16000
     bits_per_sample: 16bit
 
 speaker:
@@ -120,7 +121,7 @@ speaker:
     dac_type: external
     audio_dac: es8388_dac
     channel: mono
-    sample_rate: 8000
+    sample_rate: 16000
     bits_per_sample: 16bit
 
 # ---- Native VoIP endpoint (L16 to HA, no REGISTER; HA INVITEs it + transcodes G.711) ----
@@ -138,9 +139,9 @@ voip_stack:
     channels: [0]
   speaker: a1s_speaker
 
-  audio:                      # ESP<->HA wire contract. 8 kHz L16/20 ms maps 1:1 onto a
-    tx: { sample_rate: 8000, pcm_format: s16le, channels: 1, frame_ms: 20 }   # G.711/8000/20ms far end
-    rx: { sample_rate: 8000, pcm_format: s16le, channels: 1, frame_ms: 20 }   # (bump both to 16000 for HD).
+  audio:                      # ESP<->HA wire contract. Must match the mic/speaker rate (16 kHz).
+    tx: { sample_rate: 16000, pcm_format: s16le, channels: 1, frame_ms: 20 }   # HA transcodes 16k L16
+    rx: { sample_rate: 16000, pcm_format: s16le, channels: 1, frame_ms: 20 }   # <-> 8k G.711 for the far end.
 
   static_contacts:
     - name: Home Assistant
