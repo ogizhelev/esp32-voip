@@ -7,6 +7,7 @@ extern "C" {
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "driver/gpio.h"
+#include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_rtc.h"   // from espressif/esp_media_protocols (prebuilt engine)
 }
@@ -259,6 +260,22 @@ void SipVoip::setup() {
   g_self = this;
   ESP_LOGCONFIG(TAG, "Setting up sip_voip (%s@%s:%u)", this->username_.c_str(),
                 this->server_.c_str(), this->port_);
+
+  // CRITICAL: the esp_rtc "SIP"/"ESP_RTC_CORE" tasks log at INFO and, during
+  // registration, emit thousands of lines/sec. ESPHome forwards every esp-idf line
+  // to the UART from the MAIN LOOP task; at 115200 baud that starves loopTask and
+  // the task watchdog resets the device (~15 s -> boot loop -> safe mode).
+  // Clamp those tags to WARN so the flood is never generated.
+  esp_log_level_set("SIP", ESP_LOG_WARN);
+  esp_log_level_set("ESP_RTC_CORE", ESP_LOG_WARN);
+  esp_log_level_set("ESP_RTC", ESP_LOG_WARN);
+  esp_log_level_set("RTP", ESP_LOG_WARN);
+
+  if (!es8388_init()) {
+    ESP_LOGE(TAG, "ES8388 codec init failed");
+    this->mark_failed();
+    return;
+  }
   this->audio_ready_ = this->init_audio_();
   if (!this->audio_ready_) {
     ESP_LOGE(TAG, "audio init failed");

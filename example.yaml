@@ -1,6 +1,6 @@
 # =============================================================================
 #  esp32-voip — ESP32-A1S (ES8388) SIP intercom via the custom `sip_voip` component.
-#  Wraps Espressif's esp_sip_service engine inside ESPHome for continuous full-duplex G.711.
+#  Wraps Espressif's esp_rtc engine inside ESPHome for continuous full-duplex G.711.
 #  Requires the ESPHome beta/2026.11+ add-on (esp-idf framework). First flash over USB.
 # =============================================================================
 
@@ -15,7 +15,7 @@ esphome:
 esp32:
   board: esp32dev            # ESP32-A1S = classic ESP32-WROVER
   framework:
-    type: esp-idf            # REQUIRED — esp_sip_service / ESP-ADF is esp-idf only
+    type: esp-idf            # REQUIRED — esp_rtc / ESP-ADF is esp-idf only
 
 # WROVER PSRAM — the SIP/RTC engine wants it.
 psram:
@@ -36,6 +36,13 @@ ota:
   - platform: esphome
     password: !secret ota_password
 logger:
+  level: DEBUG
+  logs:
+    # The esp_rtc engine floods the UART with per-packet SIP traffic from its own
+    # task; forwarding it all from the main loop starves loopTask and trips the task
+    # watchdog (boot loop). The component also clamps these at runtime; this is the
+    # belt-and-suspenders guard. Raise to DEBUG only when debugging SIP itself.
+    esp-idf: WARN
 
 # ---- The custom SIP component (this repo) ----
 external_components:
