@@ -248,7 +248,7 @@ void SipVoip::on_rtc_event(int event) {
     case ESP_RTC_EVENT_CALL_ANSWERED: ESP_LOGI(TAG, "Call connected"); this->in_call_ = true; break;
     case ESP_RTC_EVENT_HANGUP: ESP_LOGI(TAG, "Call ended"); this->in_call_ = false; break;
     case ESP_RTC_EVENT_ERROR: ESP_LOGW(TAG, "SIP error"); break;
-    default: break;
+    default: ESP_LOGW(TAG, "SIP event %d", event); break;
   }
 }
 
@@ -309,13 +309,22 @@ bool SipVoip::start_engine_() {
   cfg.keepalive = 30;
   cfg.srtp_mode = ESP_RTC_SRTP_OFF;
   cfg.user_agent = "ESPHome-A1S";
+  // SIP domain: the host used to build the From/To/Contact SIP URIs (the AOR domain).
+  // Without it esp_rtc warns "sip or domain is NULL" and falls back to the server host.
+  // Defaults to the server; override via `domain:` in YAML if the registrar (e.g. an
+  // Asterisk realm / multi-domain PBX) expects a specific domain name instead of the IP.
+  static std::string domain_copy;
+  domain_copy = this->domain_.empty() ? this->server_ : this->domain_;
+  cfg.domain = domain_copy.c_str();
 
   this->rtc_ = (void *) esp_rtc_service_init(&cfg);  // registers automatically
   if (this->rtc_ == nullptr) {
     ESP_LOGE(TAG, "esp_rtc_service_init failed");
     return false;
   }
-  ESP_LOGI(TAG, "esp_rtc started, uri=%s local=%s", uri.c_str(), local_copy.c_str());
+  ESP_LOGI(TAG, "esp_rtc started: register as '%s' @ %s:%u (domain=%s) local=%s",
+           this->username_.c_str(), this->server_.c_str(), this->port_,
+           domain_copy.c_str(), local_copy.c_str());
   return true;
 }
 

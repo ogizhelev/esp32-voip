@@ -69,9 +69,12 @@ external_components:
 sip_voip:
   id: voip
   server: 10.10.4.5          # HA VoIP Stack / PBX SIP server (LAN IP, UDP 5060)
-  username: !secret sip_username     # SIP account to register as (e.g. "esp32")
-  password: !secret sip_password     # its password
-  # auth_username: !secret sip_auth_username   # optional: login user if it differs from `username`
+  username: !secret sip_username     # SIP account to register as. NOTE: esp_rtc has no
+                                     # separate auth-username field — this IS the digest
+                                     # auth user, so it must match the PBX account's auth user.
+  password: !secret sip_password     # its password (MD5 digest only; SHA-256 unsupported)
+  # domain: 10.10.4.5        # optional SIP domain/realm for From/To/Contact URIs.
+                             # Empty = use `server`. Set only if the PBX expects a named realm.
   # codec: pcma              # pcma (G.711 a-law, default) | pcmu (u-law)
   auto_answer: true          # door behaviour: pick up incoming calls automatically
 

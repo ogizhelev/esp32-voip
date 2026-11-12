@@ -43,6 +43,7 @@ class SipVoip : public Component {
   void set_port(uint16_t p) { this->port_ = p; }
   void set_username(const std::string &u) { this->username_ = u; }
   void set_password(const std::string &p) { this->password_ = p; }
+  void set_domain(const std::string &d) { this->domain_ = d; }
   void set_codec(uint8_t c) { this->codec_ = c; }  // 1 = G711A (pcma), 2 = G711U (pcmu)
   void set_auto_answer(bool v) { this->auto_answer_ = v; }
 
@@ -67,7 +68,7 @@ class SipVoip : public Component {
   static void audio_task_trampoline_(void *arg);
   void audio_task_();
 
-  std::string server_, username_, password_;
+  std::string server_, username_, password_, domain_;
   uint16_t port_{5060};
   uint8_t codec_{1};
   bool auto_answer_{true};

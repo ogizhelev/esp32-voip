@@ -19,6 +19,7 @@ CONF_SERVER = "server"
 CONF_PORT = "port"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
+CONF_DOMAIN = "domain"
 CONF_CODEC = "codec"
 CONF_AUTO_ANSWER = "auto_answer"
 
@@ -32,6 +33,11 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_PORT, default=5060): cv.port,
         cv.Required(CONF_USERNAME): cv.string,
         cv.Required(CONF_PASSWORD): cv.string,
+        # SIP domain / AOR host. Empty = use the server host. esp_rtc has NO separate
+        # auth-username field: the digest auth username IS `username`, so the PBX
+        # account's auth user must equal it. Set `domain` only if the registrar expects
+        # a specific realm/domain instead of the server IP.
+        cv.Optional(CONF_DOMAIN, default=""): cv.string,
         cv.Optional(CONF_CODEC, default="pcma"): cv.enum(CODECS, lower=True),
         cv.Optional(CONF_AUTO_ANSWER, default=True): cv.boolean,
     }
@@ -46,6 +52,7 @@ async def to_code(config):
     cg.add(var.set_port(config[CONF_PORT]))
     cg.add(var.set_username(config[CONF_USERNAME]))
     cg.add(var.set_password(config[CONF_PASSWORD]))
+    cg.add(var.set_domain(config[CONF_DOMAIN]))
     cg.add(var.set_codec(config[CONF_CODEC]))
     cg.add(var.set_auto_answer(config[CONF_AUTO_ANSWER]))
 
