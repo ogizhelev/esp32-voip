@@ -4,7 +4,7 @@
 #include <cstring>
 
 extern "C" {
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "driver/gpio.h"
 #include "esp_rtc.h"   // from espressif/esp_media_protocols (prebuilt engine)
@@ -18,6 +18,10 @@ static const char *const TAG = "sip_voip";
 // A single global pointer so the C callbacks can reach the instance. There is only
 // ever one SIP endpoint on a device.
 static SipVoip *g_self = nullptr;
+
+// ES8388 I2C master-bus handles (new IDF i2c driver)
+static i2c_master_bus_handle_t es_bus_ = nullptr;
+static i2c_master_dev_handle_t es_dev_ = nullptr;
 
 // ---------------------------------------------------------------------------
 // G.711 companding (16-bit linear PCM <-> 8-bit A-law / u-law)
@@ -68,20 +72,30 @@ static inline int16_t ulaw_to_linear(uint8_t u) {
 // ---------------------------------------------------------------------------
 static esp_err_t es_w(uint8_t reg, uint8_t val) {
   uint8_t buf[2] = {reg, val};
-  return i2c_master_write_to_device(I2C_NUM_0, ES8388_I2C_ADDR, buf, 2, pdMS_TO_TICKS(100));
+  return i2c_master_transmit(es_dev_, buf, 2, 100);
 }
 
 static bool es8388_init() {
-  i2c_config_t c = {};
-  c.mode = I2C_MODE_MASTER;
-  c.sda_io_num = PIN_I2C_SDA;
-  c.scl_io_num = PIN_I2C_SCL;
-  c.sda_pullup_en = GPIO_PULLUP_ENABLE;
-  c.scl_pullup_en = GPIO_PULLUP_ENABLE;
-  c.master.clk_speed = 100000;
-  i2c_param_config(I2C_NUM_0, &c);
-  if (i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0) != ESP_OK)
-    ESP_LOGW(TAG, "i2c_driver_install failed (already installed?)");
+  // New IDF i2c-master-bus API (legacy driver/i2c.h is removed on recent ESP-IDF).
+  i2c_master_bus_config_t bus_cfg = {};
+  bus_cfg.i2c_port = I2C_NUM_0;
+  bus_cfg.sda_io_num = (gpio_num_t) PIN_I2C_SDA;
+  bus_cfg.scl_io_num = (gpio_num_t) PIN_I2C_SCL;
+  bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
+  bus_cfg.glitch_ignore_cnt = 7;
+  bus_cfg.flags.enable_internal_pullup = true;
+  if (i2c_new_master_bus(&bus_cfg, &es_bus_) != ESP_OK) {
+    ESP_LOGE(TAG, "i2c_new_master_bus failed");
+    return false;
+  }
+  i2c_device_config_t dev_cfg = {};
+  dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+  dev_cfg.device_address = ES8388_I2C_ADDR;
+  dev_cfg.scl_speed_hz = 100000;
+  if (i2c_master_bus_add_device(es_bus_, &dev_cfg, &es_dev_) != ESP_OK) {
+    ESP_LOGE(TAG, "i2c add ES8388 failed");
+    return false;
+  }
 
   // Reset + power/clock
   es_w(0x00, 0x80); es_w(0x00, 0x00);  // soft reset
