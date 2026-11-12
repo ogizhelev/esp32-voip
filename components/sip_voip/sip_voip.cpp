@@ -169,8 +169,11 @@ bool SipVoip::init_audio_() {
     ESP_LOGE(TAG, "ring buffer alloc failed");
     return false;
   }
-  xTaskCreatePinnedToCore(&SipVoip::audio_task_trampoline_, "sip_i2s", 4096, this, 18,
-                          &this->audio_task_handle_, 0);
+  // Pin the audio task to core 1 (APP_CPU) at a modest priority. It blocks on
+  // i2s_channel_read (paces to the 20 ms frame), so it yields constantly; keeping it
+  // OFF core 0 ensures it can never contend with WiFi/lwIP (prio ~18-23 on core 0).
+  xTaskCreatePinnedToCore(&SipVoip::audio_task_trampoline_, "sip_i2s", 4096, this, 5,
+                          &this->audio_task_handle_, 1);
   return true;
 }
 
