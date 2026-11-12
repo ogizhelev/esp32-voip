@@ -1,0 +1,188 @@
+# =============================================================================
+#  door-intercom — ESP32-A1S (ES8388) full-duplex SIP intercom using the native
+#  n-IA-hane `voip_stack` ESPHome component (+ the Home Assistant "VoIP Stack"
+#  integration, esphome-intercom).
+#
+#  WHY THIS REPLACES the old custom `sip_voip` (esp_rtc) component in this repo:
+#  the VoIP Stack ecosystem's ESP devices are SIP *peers*, not registrants — the
+#  native client does NOT SIP-REGISTER (README: "No SIP registration..."). Our
+#  esp_rtc wrapper endlessly 401-looped trying to register; that whole path was
+#  architecturally wrong. `voip_stack` is the matched, maintained, full-duplex
+#  client: HA's B2BUA INVITEs this device directly and transcodes G.711<->L16.
+#
+#  Requires ESPHome >= 2026.11 (single-bus i2s `full_duplex`). esp-idf framework.
+#  Flash this as your device config; the components/sip_voip/ tree is retired
+#  (kept only as reference — nothing here references it).
+# =============================================================================
+
+substitutions:
+  name: door-intercom
+  friendly_name: "Door Intercom"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2026.10.0      # voip_stack needs >=2026.10; the single-bus i2s
+                              # `full_duplex: true` below needs core >=2026.11
+                              # (you are on 2026.11.0b4, which has it).
+  on_boot:
+    priority: -100            # after I2C + ES8388 init
+    then:
+      - output.turn_on: pa_enable                       # NS4150 speaker amp ON (GPIO21)
+      - select.set: { id: es_dac_out, option: "BOTH" }  # DAC -> LOUT1/2+ROUT1/2 (LINE1-only = silent)
+      - select.set: { id: es_adc_in,  option: "LINE1" } # ADC <- onboard mics for bring-up;
+                                                        # switch to LINE2 when you wire the domofon handset mic.
+
+esp32:
+  board: esp32dev             # ESP32-A1S = classic ESP32-WROVER
+  framework:
+    type: esp-idf
+
+# WROVER has PSRAM; NOT required for this PCM build. It is only SAFE to enable
+# because we leave voip_stack's *_in_psram options at their default false — the
+# component HARD-FAILS validation on classic ESP32 if task stacks go in PSRAM.
+psram:
+  mode: quad
+  speed: 80MHz
+
+logger:
+  level: INFO                 # drop to DEBUG only while bringing audio up
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none       # never park the radio mid-RTP
+
+captive_portal:
+
+api:
+  custom_services: true       # MANDATORY: HA discovery + voip_stack call actions. Build fails without it.
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# ---- The native VoIP client (consumed read-only; no custom component from this repo) ----
+external_components:
+  - source: github://n-IA-hane/esphome-voip-stack@main
+    components: [voip_stack]
+
+# ---- ES8388 codec init over I2C (ESPHome core es8388 — inits BOTH ADC and DAC) ----
+i2c:
+  sda: GPIO33
+  scl: GPIO32
+  frequency: 100kHz
+  scan: true
+
+audio_dac:
+  - platform: es8388
+    id: es8388_dac
+    address: 0x10
+
+select:
+  - platform: es8388
+    es8388_id: es8388_dac
+    dac_output:    { name: "DAC Output",    id: es_dac_out }
+    adc_input_mic: { name: "ADC Input MIC", id: es_adc_in }
+
+output:
+  - platform: gpio
+    pin: GPIO21
+    id: pa_enable             # external PA (NS4150) enable
+
+# ---- ONE shared I2S bus, continuous full-duplex: this is the mic-clock fix ----
+# The RX channel holds BCLK/WS/MCLK up while TX idles, so the ES8388 ADC never
+# sees ESP_ERR_TIMEOUT (the failure mode of the earlier half-duplex attempt).
+i2s_audio:
+  - id: i2s_bus
+    i2s_mclk_pin: GPIO0
+    i2s_bclk_pin: GPIO27
+    i2s_lrclk_pin: GPIO25
+    full_duplex: true
+
+# full_duplex rule: the one mic and the speaker MUST share the bus with identical
+# sample_rate + bits_per_sample. 8 kHz / 16-bit on both = 1:1 onto a G.711 far end.
+microphone:
+  - platform: i2s_audio
+    id: a1s_mic
+    i2s_audio_id: i2s_bus
+    i2s_din_pin: GPIO35       # ES8388 ADC -> ESP
+    adc_type: external
+    channel: left
+    sample_rate: 8000
+    bits_per_sample: 16bit
+
+speaker:
+  - platform: i2s_audio
+    id: a1s_speaker
+    i2s_audio_id: i2s_bus
+    i2s_dout_pin: GPIO26      # ESP -> ES8388 DAC
+    dac_type: external
+    audio_dac: es8388_dac
+    channel: mono
+    sample_rate: 8000
+    bits_per_sample: 16bit
+
+# ---- Native VoIP endpoint (L16 to HA, no REGISTER; HA INVITEs it + transcodes G.711) ----
+voip_stack:
+  id: phone
+  transport: udp
+  sip_port: 5060
+  rtp_port: 40000
+  extension: "101"            # this door unit's user-part; dial "101" in HA to ring it
+  use_ha_as_first_contact: true
+
+  microphone_source:
+    microphone: a1s_mic
+    bits_per_sample: 16
+    channels: [0]
+  speaker: a1s_speaker
+
+  audio:                      # ESP<->HA wire contract. 8 kHz L16/20 ms maps 1:1 onto a
+    tx: { sample_rate: 8000, pcm_format: s16le, channels: 1, frame_ms: 20 }   # G.711/8000/20ms far end
+    rx: { sample_rate: 8000, pcm_format: s16le, channels: 1, frame_ms: 20 }   # (bump both to 16000 for HD).
+
+  static_contacts:
+    - name: Home Assistant
+    - name: "100"             # the softphone extension the door calls
+
+  ringing_timeout: 45s
+  calling_timeout: 30s
+
+# ---- HA-managed call entities (voip_stack auto-creates the endpoint/state/etc.
+#      role entities via ha_integration; do NOT declare those yourself) ----
+switch:
+  - platform: voip_stack
+    auto_answer: { name: "Auto Answer" }   # ON = answer HA's inbound call instantly
+    dnd: { name: "Do Not Disturb" }
+
+number:
+  - platform: voip_stack
+    master_volume: { name: "Call Volume" }
+    mic_gain: { name: "Mic Gain" }
+
+button:
+  - platform: voip_stack
+    call: { name: "Call Toggle" }          # idle->call HA / ringing->answer / active->hangup
+    decline: { name: "Decline" }
+
+# ---- Optional: a physical door button that dials extension 100. Wire it, set the
+#      real GPIO, and uncomment. (The software "Call Toggle" button above only
+#      toggles the first contact; use the action to dial a specific target.) ----
+# binary_sensor:
+#   - platform: gpio
+#     pin: { number: GPIO19, mode: { input: true, pullup: true }, inverted: true }
+#     name: "Door Button"
+#     on_press:
+#       - voip_stack.call: { id: phone, target: "100" }
+
+# ---- Diagnostics ----
+sensor:
+  - platform: uptime
+    name: "Uptime"
+  - platform: wifi_signal
+    name: "WiFi"
+    update_interval: 60s
+text_sensor:
+  - platform: version
+    name: "ESPHome Version"

@@ -1,5 +1,17 @@
 # esp32-voip
 
+> ## ⚠️ DIRECTION CHANGE (2026-11-12): the `sip_voip` / esp_rtc approach below is RETIRED.
+> The VoIP Stack ecosystem's ESP devices are SIP **peers, not registrants** — they do **not**
+> SIP-REGISTER. The custom `esp_rtc` wrapper here endlessly 401-looped trying to register, which
+> was architecturally wrong for this server. **Use [`door-intercom.yaml`](door-intercom.yaml)**
+> instead: it drives the ES8388 full-duplex via ESPHome core's single-bus `i2s_audio: full_duplex`
+> (the real fix for the mic `ESP_ERR_TIMEOUT`) and uses the native, maintained, matched
+> **[`n-IA-hane/esphome-voip-stack`](https://github.com/n-IA-hane/esphome-voip-stack)** client +
+> the **VoIP Stack** (`esphome-intercom`) HA integration. The `components/sip_voip/` tree is kept
+> only as reference; nothing in the new config uses it.
+
+---
+
 A custom **ESPHome external component** (`sip_voip`) that turns an **AI-Thinker ESP32-A1S
 Audio Kit** (classic ESP32-WROVER + **ES8388** codec) into a **SIP intercom endpoint** with
 **full-duplex G.711 audio**, while staying in the ESPHome workflow (YAML, OTA, Home Assistant).
