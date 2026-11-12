@@ -7,6 +7,7 @@ extern "C" {
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "driver/gpio.h"
+#include "esp_netif.h"
 #include "esp_rtc.h"   // from espressif/esp_media_protocols (prebuilt engine)
 }
 
@@ -266,12 +267,17 @@ void SipVoip::setup() {
 }
 
 bool SipVoip::start_engine_() {
-  std::string local = network::get_ip_address().str();  // station IP (REQUIRED by esp_rtc)
+  // Station IP is required by esp_rtc (goes in the REGISTER Via/Contact).
+  char ipbuf[16] = "0.0.0.0";
+  esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  esp_netif_ip_info_t ipinfo;
+  if (netif != nullptr && esp_netif_get_ip_info(netif, &ipinfo) == ESP_OK)
+    esp_ip4addr_ntoa(&ipinfo.ip, ipbuf, sizeof(ipbuf));
   static std::string uri;
   uri = "udp://" + this->username_ + ":" + this->password_ + "@" + this->server_ + ":" +
         std::to_string(this->port_);
   static std::string local_copy;
-  local_copy = local;
+  local_copy = ipbuf;
 
   static esp_rtc_data_cb_t cbs;
   cbs = {};
